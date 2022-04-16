@@ -2,6 +2,12 @@
 
 Learning by doing from [https://github.com/zupzup/warp-websockets-example](https://github.com/zupzup/warp-websockets-example)
 
+### Error
+
+```shell
+WebSocket protocol error: Connection reset without closing handshake
+```
+
 ### Register
 
 ```shell
