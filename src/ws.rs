@@ -14,20 +14,20 @@ pub async fn client_connection(ws: WebSocket, id: String, clients: Clients, mut 
 
     tokio::task::spawn(client_rcv.forward(client_ws_sender).map(|result| {
         if let Err(e) = result {
-            eprintln!("error sending websocket msg: {}", e);
+            eprintln!("Error sending websocket msg: {}", e);
         }
     }));
 
     client.sender = Some(client_sender);
     clients.write().await.insert(id.clone(), client);
 
-    println!("{} connected", id);
+    println!("{} Connected", id);
 
     while let Some(result) = client_ws_rcv.next().await {
         let msg = match result {
             Ok(msg) => msg,
             Err(e) => {
-                eprintln!("error receiving ws message for id: {}): {}", id.clone(), e);
+                eprintln!("Error receiving ws message for id: {}): {}", id.clone(), e);
                 break;
             }
         };
@@ -35,11 +35,11 @@ pub async fn client_connection(ws: WebSocket, id: String, clients: Clients, mut 
     }
 
     clients.write().await.remove(&id);
-    println!("{} disconnected", id);
+    println!("{} Disconnected", id);
 }
 
 async fn client_msg(id: &str, msg: Message, clients: &Clients) {
-    println!("received message from {}: {:?}", id, msg);
+    println!("Received message from {}: {:?}", id, msg);
     let message = match msg.to_str() {
         Ok(v) => v,
         Err(_) => return,
@@ -52,7 +52,7 @@ async fn client_msg(id: &str, msg: Message, clients: &Clients) {
     let topics_req: TopicsRequest = match from_str(&message) {
         Ok(v) => v,
         Err(e) => {
-            eprintln!("error while parsing message to topics request: {}", e);
+            eprintln!("Error while parsing message to topics request: {}", e);
             return;
         }
     };

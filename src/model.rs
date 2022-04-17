@@ -30,7 +30,7 @@ pub struct RegisterResponse {
     pub url: String,
 }
 
-#[derive(Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug)]
 pub struct Event {
     pub topic: String,
     pub user_id: Option<usize>,

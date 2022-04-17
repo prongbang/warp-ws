@@ -15,7 +15,8 @@ pub async fn publish_handler(body: Event, clients: Clients) -> Result<impl Reply
         .filter(|(_, client)| client.topics.contains(&body.topic))
         .for_each(|(_, client)| {
             if let Some(sender) = &client.sender {
-                let _ = sender.send(Ok(Message::text(body.message.clone())));
+                let serialized_body = serde_json::to_string(&body).unwrap();
+                let _ = sender.send(Ok(Message::text(serialized_body.clone())));
             }
         });
 

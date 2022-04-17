@@ -2,10 +2,10 @@
 
 Learning by doing from [https://github.com/zupzup/warp-websockets-example](https://github.com/zupzup/warp-websockets-example)
 
-### Error
+### Run
 
 ```shell
-WebSocket protocol error: Connection reset without closing handshake
+make dev
 ```
 
 ### Register
@@ -29,7 +29,13 @@ curl -X DELETE 'http://localhost:8000/register/e1fadcd3919a4b78aad0251eed908b70'
 ### Connect to the WebSocket
 
 ```shell
-ws://127.0.0.1:8000/ws/e1fadcd3919a4b78aad0251eed908b70
+websocat ws://127.0.0.1:8000/ws/e1fadcd3919a4b78aad0251eed908b70
+```
+
+Received
+
+```json
+{"topic":"cats","user_id":1,"message":"are awesome"}
 ```
 
 ### Publish Messages
