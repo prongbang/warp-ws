@@ -1,47 +1,54 @@
 mod ws;
-mod handler;
 mod model;
 
-use std::collections::HashMap;
-use std::sync::Arc;
-use tokio::sync::{RwLock};
-use warp::{Filter};
-use crate::model::Clients;
+use std::env;
+use std::fs;
+use std::net::SocketAddr;
+use warp::Filter;
+use crate::model::Users;
+use crate::ws::connect;
 
 #[tokio::main]
 async fn main() {
-    let clients: Clients = Arc::new(RwLock::new(HashMap::new()));
+    let addr = env::args()
+        .nth(1)
+        .unwrap_or_else(|| "127.0.0.1:8000".to_string());
+    let socket_address: SocketAddr = addr.parse().expect("valid socket Address");
 
-    let health_route = warp::path!("health").and_then(handler::health_handler);
+    let users = Users::default();
+    let users = warp::any().map(move || users.clone());
 
-    let register = warp::path("register");
-    let register_routes = register
-        .and(warp::post())
-        .and(warp::body::json())
-        .and(ws::with_clients(clients.clone()))
-        .and_then(handler::register_handler)
-        .or(register
-            .and(warp::delete())
-            .and(warp::path::param())
-            .and(ws::with_clients(clients.clone()))
-            .and_then(handler::unregister_handler));
+    let opt = warp::path::param::<String>()
+        .map(Some)
+        .or_else(|_| async { Ok::<(Option<String>, ), std::convert::Infallible>((None, )) });
 
-    let publish = warp::path!("publish")
-        .and(warp::body::json())
-        .and(ws::with_clients(clients.clone()))
-        .and_then(handler::publish_handler);
+    // GET /hello/warp => 200 OK with body "Hello, warp!"
+    let hello = warp::path("hello")
+        .and(opt)
+        .and(warp::path::end())
+        .map(|name: Option<String>| {
+            format!("Hello, {}!", name.unwrap_or_else(|| "world".to_string()))
+        });
 
-    let ws_route = warp::path("ws")
+    // GET /ws
+    let chat = warp::path("ws")
         .and(warp::ws())
-        .and(warp::path::param())
-        .and(ws::with_clients(clients.clone()))
-        .and_then(handler::ws_handler);
+        .and(users)
+        .map(|ws: warp::ws::Ws, users| ws.on_upgrade(move |socket| connect(socket, users)));
 
-    let routes = health_route
-        .or(register_routes)
-        .or(ws_route)
-        .or(publish)
-        .with(warp::cors().allow_any_origin());
+    let files = warp::fs::dir("./static");
 
-    warp::serve(routes).run(([127, 0, 0, 1], 8000)).await;
+    let res_404 = warp::any().map(|| {
+        warp::http::Response::builder()
+            .status(warp::http::StatusCode::NOT_FOUND)
+            .body(fs::read_to_string("./static/404.html").expect("404 404?"))
+    });
+
+    let routes = chat.or(hello).or(files).or(res_404);
+
+    let server = warp::serve(routes).try_bind(socket_address);
+
+    println!("Running server at {}!", addr);
+
+    server.await
 }

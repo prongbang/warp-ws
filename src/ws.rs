@@ -1,68 +1,42 @@
-use std::convert::Infallible;
-use futures::{FutureExt, StreamExt};
-use serde_json::from_str;
+use futures::StreamExt;
 use tokio::sync::mpsc;
 use tokio_stream::wrappers::UnboundedReceiverStream;
-use warp::Filter;
 use warp::ws::{Message, WebSocket};
-use crate::model::{Client, Clients, TopicsRequest};
+use crate::model::{NEXT_USERID, Users};
 
-pub async fn client_connection(ws: WebSocket, id: String, clients: Clients, mut client: Client) {
-    let (client_ws_sender, mut client_ws_rcv) = ws.split();
-    let (client_sender, client_rcv) = mpsc::unbounded_channel();
-    let client_rcv = UnboundedReceiverStream::new(client_rcv);
+pub async fn connect(ws: WebSocket, users: Users) {
+    // Bookkeeping
+    let my_id = NEXT_USERID.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    println!("Welcome User {}", my_id);
 
-    tokio::task::spawn(client_rcv.forward(client_ws_sender).map(|result| {
-        if let Err(e) = result {
-            eprintln!("error sending websocket msg: {}", e);
-        }
-    }));
+    // Establishing a connection
+    let (user_tx, mut user_rx) = ws.split();
+    let (tx, rx) = mpsc::unbounded_channel();
 
-    client.sender = Some(client_sender);
-    clients.write().await.insert(id.clone(), client);
+    let rx = UnboundedReceiverStream::new(rx);
 
-    println!("{} connected", id);
+    tokio::spawn(rx.forward(user_tx));
+    users.write().await.insert(my_id, tx);
 
-    while let Some(result) = client_ws_rcv.next().await {
-        let msg = match result {
-            Ok(msg) => msg,
-            Err(e) => {
-                eprintln!("error receiving ws message for id: {}): {}", id.clone(), e);
-                break;
-            }
-        };
-        client_msg(&id, msg, &clients).await;
+    // Reading and broadcasting messages
+    while let Some(result) = user_rx.next().await {
+        broadcast_msg(result.expect("Failed to fetch message"), &users).await;
     }
 
-    clients.write().await.remove(&id);
-    println!("{} disconnected", id);
+    // Disconnect
+    disconnect(my_id, &users).await;
 }
 
-async fn client_msg(id: &str, msg: Message, clients: &Clients) {
-    println!("received message from {}: {:?}", id, msg);
-    let message = match msg.to_str() {
-        Ok(v) => v,
-        Err(_) => return,
-    };
-
-    if message == "ping" || message == "ping\n" {
-        return;
-    }
-
-    let topics_req: TopicsRequest = match from_str(&message) {
-        Ok(v) => v,
-        Err(e) => {
-            eprintln!("error while parsing message to topics request: {}", e);
-            return;
+pub async fn broadcast_msg(msg: Message, users: &Users) {
+    if let Ok(_) = msg.to_str() {
+        for (&_uid, tx) in users.read().await.iter() {
+            tx.send(Ok(msg.clone())).expect("Failed to send message");
         }
-    };
-
-    let mut locked = clients.write().await;
-    if let Some(v) = locked.get_mut(id) {
-        v.topics = topics_req.topics;
     }
 }
 
-pub fn with_clients(clients: Clients) -> impl Filter<Extract=(Clients, ), Error=Infallible> + Clone {
-    warp::any().map(move || clients.clone())
+pub async fn disconnect(my_id: usize, users: &Users) {
+    println!("Good bye user {}", my_id);
+
+    users.write().await.remove(&my_id);
 }
